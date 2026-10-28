@@ -1,5 +1,5 @@
 {
-    "growth_input_enabled": true,
+    "growth_input_enabled": false,
     "growth_input_order": "oldest_first",
-    "growth_input_mode": "clipboard"
+    "growth_input_mode": "dialog"
 }

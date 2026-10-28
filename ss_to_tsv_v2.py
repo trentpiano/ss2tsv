@@ -11,8 +11,32 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from tkinterdnd2 import DND_FILES, TkinterDnD
 import json
+import sys
+from pathlib import Path
 
-CONFIG_PATH = "config.json"
+
+# exe本体、またはPythonスクリプトが置かれた場所
+if getattr(sys, "frozen", False):
+    APP_DIR = Path(sys.executable).resolve().parent
+else:
+    APP_DIR = Path(__file__).resolve().parent
+
+# PyInstallerで同梱したファイルの参照先
+if getattr(sys, "frozen", False):
+    RESOURCE_DIR = Path(sys._MEIPASS)
+else:
+    RESOURCE_DIR = APP_DIR
+
+# 固定データの参照先
+SP_PATH = RESOURCE_DIR / "sp.txt"
+TEMPLATE_DIR = RESOURCE_DIR / "templates_adwl"
+
+# ユーザーデータの保存先
+CONFIG_PATH = APP_DIR / "config.json"
+INPUT_DIR = APP_DIR / "input_results"
+ARCHIVE_DIR = APP_DIR / "archive_results"
+SEITO_DIR = APP_DIR / "seito"
+SENSEI_DIR = APP_DIR / "sensei"
 
 DEFAULT_CONFIG = {
     "growth_input_enabled": False,
@@ -65,18 +89,27 @@ def imwrite_unicode(path, img):
 def initialize_lists():
     global SP_LIST, DATE
 
-    for folder in ["archive_results", "input_results", "seito", "sensei"]:
-        os.makedirs(folder, exist_ok=True)
+    for folder in [
+        INPUT_DIR,
+        ARCHIVE_DIR,
+        SEITO_DIR,
+        SENSEI_DIR,
+    ]:
+        folder.mkdir(parents=True, exist_ok=True)
 
-    with open("sp.txt", "r", encoding="utf-8") as f:
+    with open(SP_PATH, "r", encoding="utf-8") as f:
         SP_LIST = [line.strip() for line in f]
 
-    DATE = datetime.datetime.now().strftime('%Y/%m/%d %H:%M:%S')
+    DATE = datetime.datetime.now().strftime(
+        "%Y/%m/%d %H:%M:%S"
+    )
 
-    adwlTemplates = {"templates_adwl/templateAL.png":("攻撃", "False"), 
-                    "templates_adwl/templateAW.png":("攻撃", "True"),
-                    "templates_adwl/templateDL.png":("防衛", "False"),
-                    "templates_adwl/templateDW.png":("防衛", "True")}
+    adwlTemplates = {
+        str(TEMPLATE_DIR / "templateAL.png"): ("攻撃", "False"),
+        str(TEMPLATE_DIR / "templateAW.png"): ("攻撃", "True"),
+        str(TEMPLATE_DIR / "templateDL.png"): ("防衛", "False"),
+        str(TEMPLATE_DIR / "templateDW.png"): ("防衛", "True"),        
+    }
 
     adwl_hash_db = {}
     for templ in adwlTemplates:
@@ -86,16 +119,16 @@ def initialize_lists():
         adwl_hash_db[templ] = h
 
     sensei_db = {}
-    for f in os.listdir("sensei"):
+    for f in os.listdir(SENSEI_DIR):
         if f.lower().endswith((".png",".jpg",".jpeg")):
-            img = Image.open(f"sensei/{f}").convert("L").resize((128,32))
+            img = Image.open(SENSEI_DIR / f).convert("L").resize((128,32))
             sensei_db[f[:-4]] = imagehash.phash(img)
 
     seito_db = {}
-    for f in os.listdir("seito"):
+    for f in os.listdir(SEITO_DIR):
         if not f.lower().endswith((".png",".jpg",".jpeg")):
             continue
-        img = Image.open(f"seito/{f}").convert("L").resize((64,64))
+        img = Image.open(SEITO_DIR / f).convert("L").resize((64,64))
         seito_db[f[:-4]] = imagehash.phash(img)
 
     return adwlTemplates, adwl_hash_db, sensei_db, seito_db
@@ -105,7 +138,7 @@ def create_DnD_tk():
         files = root.tk.splitlist(event.data)
         for f in files:
             if os.path.isfile(f):
-                shutil.move(f,"input_results")
+                shutil.move(f, INPUT_DIR)
         root.destroy()
 
     root = TkinterDnD.Tk()
@@ -199,8 +232,7 @@ def save_unknown_sensei(img, sensei_db):
     return name, sensei_db
 
 def add_sensei_to_db(name, img, sensei_db):
-    os.makedirs("sensei", exist_ok=True)
-    path = f"sensei/{name}.png"
+    path = SENSEI_DIR / f"{name}.png"
 
     # 前処理：グレースケール + 二値化
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -333,7 +365,7 @@ def register_seito_tk(img):
 
 def add_seito_to_db(name, img, seito_db):
     os.makedirs("seito", exist_ok=True)
-    path = f"seito/{name}.png"
+    path = SEITO_DIR / f"{name}.png"
 
     resized = cv2.resize(img, (64, 64), interpolation=cv2.INTER_AREA)
     imwrite_unicode(path, resized)
@@ -500,7 +532,7 @@ def main():
     adwlTemplates, adwl_hash_db, sensei_db, seito_db = initialize_lists()
     create_DnD_tk()
 
-    files = os.listdir("input_results")
+    files = os.listdir(INPUT_DIR)
     total = len(files)
 
     progress_win, progress_bar = create_progress_window(total)
@@ -513,7 +545,7 @@ def main():
     attackFiles = []
 
     for i, result in enumerate(files, start=1):
-        result_path = os.path.join("input_results", result)
+        result_path = INPUT_DIR / result
         inputImage = imread_unicode(result_path)
         if inputImage is None:
             print("読み込み失敗:", result_path)
@@ -539,7 +571,7 @@ def main():
             attackLines.append("\t".join(outputLine))
             attackFiles.append(result)
 
-        shutil.move(result_path, "archive_results")
+        shutil.move(result_path, ARCHIVE_DIR)
 
         # プログレスバー更新
         progress_bar["value"] = i
